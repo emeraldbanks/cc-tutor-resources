@@ -33,6 +33,7 @@ function migrate(db: Database.Database): void {
 			cycle TEXT,
 			week TEXT,
 			subject TEXT,
+			relevant INTEGER,            -- NULL=unchecked, 1=relevant, 0=not relevant
 			transcript TEXT,
 			transcript_fetched INTEGER NOT NULL DEFAULT 0,
 			exported INTEGER NOT NULL DEFAULT 0,
@@ -43,6 +44,12 @@ function migrate(db: Database.Database): void {
 		CREATE INDEX IF NOT EXISTS idx_videos_cycle_week ON videos(cycle, week);
 		CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel_id);
 	`);
+
+	// Add relevant column if missing (migration for existing DBs)
+	const cols = db.prepare("PRAGMA table_info(videos)").all() as { name: string }[];
+	if (!cols.some((c) => c.name === 'relevant')) {
+		db.exec('ALTER TABLE videos ADD COLUMN relevant INTEGER');
+	}
 }
 
 // --- Channel helpers ---
@@ -77,6 +84,7 @@ export interface VideoRow {
 	cycle: string | null;
 	week: string | null;
 	subject: string | null;
+	relevant: number | null;
 	transcript: string | null;
 	transcript_fetched: number;
 	exported: number;
@@ -113,6 +121,7 @@ export function getVideos(opts: {
 	week?: string;
 	subject?: string;
 	transcriptNeeded?: boolean;
+	includeIrrelevant?: boolean;
 }): VideoRow[] {
 	const db = getDB();
 	const conditions: string[] = [];
@@ -133,6 +142,9 @@ export function getVideos(opts: {
 	if (opts.transcriptNeeded) {
 		conditions.push('v.transcript_fetched = 0');
 	}
+	if (!opts.includeIrrelevant) {
+		conditions.push('(v.relevant IS NULL OR v.relevant = 1)');
+	}
 
 	const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -145,6 +157,33 @@ export function getVideos(opts: {
 			 ORDER BY CAST(v.week AS INTEGER), v.subject, v.title`
 		)
 		.all(...params) as VideoRow[];
+}
+
+export function getUnfilteredVideos(cycle: string): VideoRow[] {
+	const db = getDB();
+	return db
+		.prepare(
+			`SELECT v.*, c.name as channel_name, c.handle as channel_handle, c.is_target
+			 FROM videos v
+			 LEFT JOIN channels c ON v.channel_id = c.channel_id
+			 WHERE v.cycle = ? AND v.relevant IS NULL AND v.week IS NULL
+			 ORDER BY v.title`
+		)
+		.all(cycle) as VideoRow[];
+}
+
+export function setRelevance(videoId: string, relevant: boolean, week?: string, subject?: string): void {
+	const db = getDB();
+	if (relevant && (week || subject)) {
+		db.prepare(`
+			UPDATE videos SET relevant = 1,
+				week = COALESCE(?, videos.week),
+				subject = COALESCE(?, videos.subject)
+			WHERE video_id = ?
+		`).run(week ?? null, subject ?? null, videoId);
+	} else {
+		db.prepare('UPDATE videos SET relevant = ? WHERE video_id = ?').run(relevant ? 1 : 0, videoId);
+	}
 }
 
 export function setTranscript(videoId: string, transcript: string | null): void {
