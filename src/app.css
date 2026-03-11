@@ -1,0 +1,17 @@
+@import 'tailwindcss';
+
+@theme {
+	--font-serif: 'Georgia', 'Times New Roman', serif;
+	--font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+	--color-terracotta: #c2410c;
+	--color-terracotta-light: #ea580c;
+	--color-sage: #15803d;
+	--color-sage-light: #16a34a;
+	--color-warm-white: #fafaf9;
+	--color-warm-100: #f5f5f4;
+	--color-warm-200: #e7e5e4;
+	--color-warm-300: #d6d3d1;
+	--color-warm-700: #44403c;
+	--color-warm-800: #292524;
+	--color-warm-900: #1c1917;
+}
