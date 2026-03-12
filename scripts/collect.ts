@@ -6,6 +6,7 @@ import { fetchTranscripts } from './lib/transcripts.js';
 import { exportCSV } from './lib/export.js';
 import { autoApproveWithWeek, autoRejectIrrelevant, filterWithLLM } from './lib/filter.js';
 import { reclassifyVideos } from './lib/classify.js';
+import { pushToSheet, pullFromSheet } from './lib/sheets-sync.js';
 
 // --- Env Loading ---
 
@@ -41,6 +42,8 @@ Commands:
   reclassify    Re-extract cycle/week/subject from titles for existing videos
   transcripts   Fetch transcripts for videos missing them
   export        Export videos to CSV/JSON
+  push          Push videos from local DB to Google Sheets
+  pull          Pull videos from Google Sheets into local DB
   list          List videos in the database
 
 Options:
@@ -56,6 +59,10 @@ Examples:
   npm run collect -- reclassify --cycle 2
   npm run collect -- transcripts --cycle 2
   npm run collect -- export --cycle 2 --week 18
+  npm run collect -- push --cycle 2
+  npm run collect -- push --cycle 2 --week 18
+  npm run collect -- pull
+  npm run collect -- pull --cycle 2
   npm run collect -- list --cycle 2 --week 18 --subject History
 `);
 }
@@ -84,7 +91,7 @@ function parseArgs(): CLIArgs {
 		else if (!args[i].startsWith('-') && !command) command = args[i];
 	}
 
-	if (!command || !cycle) {
+	if (!command || (!cycle && command !== 'pull')) {
 		printUsage();
 		process.exit(1);
 	}
@@ -199,6 +206,14 @@ async function main() {
 
 		case 'export':
 			exportCSV(cycle, week);
+			break;
+
+		case 'push':
+			await pushToSheet(cycle, week);
+			break;
+
+		case 'pull':
+			await pullFromSheet(cycle || undefined);
 			break;
 
 		case 'list':

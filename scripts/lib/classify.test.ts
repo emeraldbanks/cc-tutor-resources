@@ -104,6 +104,14 @@ describe('classifySubject', () => {
 	it('returns Unknown for unclassifiable titles', () => {
 		expect(classifySubject('Random video about nothing')).toBe('Unknown');
 	});
+
+	it('classifies "Science: Parts Of The Sun" as Science, not Fine Arts', () => {
+		expect(classifySubject('Cycle 2 Week 9 Science: Parts Of The Sun')).toBe('Science');
+	});
+
+	it('classifies fine arts when actually about art', () => {
+		expect(classifySubject('CC Cycle 2 Week 9 Fine Arts: Monet')).toBe('Fine Arts');
+	});
 });
 
 describe('word-boundary matching', () => {
