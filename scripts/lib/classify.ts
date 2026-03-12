@@ -1,5 +1,5 @@
 // Keywords used to auto-classify videos into subjects
-const SUBJECT_KEYWORDS: Record<string, string[]> = {
+const SUBJECT_KEYWORDS: Record<string, (string | RegExp)[]> = {
 	History: ['history', 'historical'],
 	Science: ['science', 'scientific', 'experiment'],
 	'Hands-on Science': ['hands-on', 'hands on', 'experiment', 'lab'],
@@ -8,7 +8,7 @@ const SUBJECT_KEYWORDS: Record<string, string[]> = {
 	Geography: ['geography', 'map', 'continent', 'country', 'countries'],
 	English: ['english', 'grammar', 'sentence', 'writing', 'essay'],
 	Timeline: ['timeline', 'time line', 'timeline song', 'timeline cards'],
-	'Fine Arts': ['fine arts', 'art', 'drawing', 'painting', 'music', 'composer', 'artist'],
+	'Fine Arts': ['fine arts', /\bart\b/, 'drawing', 'painting', 'music', 'composer', 'artist'],
 };
 
 // Check more specific subjects first to avoid misclassification
@@ -28,7 +28,7 @@ export function classifySubject(title: string): string {
 	const lower = title.toLowerCase();
 	for (const subject of SUBJECT_ORDER) {
 		const keywords = SUBJECT_KEYWORDS[subject];
-		if (keywords?.some((kw) => lower.includes(kw))) return subject;
+		if (keywords?.some((kw) => (kw instanceof RegExp ? kw.test(lower) : lower.includes(kw)))) return subject;
 	}
 	return 'Unknown';
 }
