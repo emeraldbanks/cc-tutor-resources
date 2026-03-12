@@ -176,6 +176,10 @@ export async function searchBroad(cycle: string, week: string, apiKey: string): 
 		// Filter: only keep if title mentions the correct week
 		if (extractedWeek && parseInt(extractedWeek, 10) !== weekNum) continue;
 
+		// Use the cycle from the title if present; skip videos for a different cycle
+		const videoCycle = extractCycle(title) ?? cycle;
+		if (videoCycle !== cycle) continue;
+
 		upsertChannel(item.snippet.channelId, '', item.snippet.channelTitle, false);
 
 		upsertVideo({
@@ -183,7 +187,7 @@ export async function searchBroad(cycle: string, week: string, apiKey: string): 
 			title,
 			channelId: item.snippet.channelId,
 			youtubeUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-			cycle,
+			cycle: videoCycle,
 			week: extractedWeek ?? week,
 			subject: classifySubject(title) !== 'Unknown' ? classifySubject(title) : null,
 		});

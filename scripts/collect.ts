@@ -5,6 +5,7 @@ import { searchTargeted, searchBroad } from './lib/youtube.js';
 import { fetchTranscripts } from './lib/transcripts.js';
 import { exportCSV } from './lib/export.js';
 import { autoApproveWithWeek, filterWithLLM } from './lib/filter.js';
+import { reclassifyVideos } from './lib/classify.js';
 
 // --- Env Loading ---
 
@@ -37,6 +38,7 @@ Usage: npm run collect -- <command> [options]
 Commands:
   search        Search YouTube and store results in SQLite
   filter        Auto-approve videos with week numbers, send the rest to Claude
+  reclassify    Re-extract cycle/week/subject from titles for existing videos
   transcripts   Fetch transcripts for videos missing them
   export        Export videos to CSV/JSON
   list          List videos in the database
@@ -51,6 +53,7 @@ Examples:
   npm run collect -- search --cycle 2
   npm run collect -- search --cycle 2 --week 18 --broad
   npm run collect -- filter --cycle 2
+  npm run collect -- reclassify --cycle 2
   npm run collect -- transcripts --cycle 2
   npm run collect -- export --cycle 2 --week 18
   npm run collect -- list --cycle 2 --week 18 --subject History
@@ -175,6 +178,11 @@ async function main() {
 			const approved = autoApproveWithWeek(cycle);
 			console.log(`Auto-approved ${approved} videos with week numbers in title.`);
 			await filterWithLLM(cycle);
+			break;
+		}
+
+		case 'reclassify': {
+			reclassifyVideos(cycle);
 			break;
 		}
 
