@@ -4,7 +4,7 @@ import { getDB, getVideos } from './lib/db.js';
 import { searchTargeted, searchBroad } from './lib/youtube.js';
 import { fetchTranscripts } from './lib/transcripts.js';
 import { exportCSV } from './lib/export.js';
-import { autoApproveWithWeek, filterWithLLM } from './lib/filter.js';
+import { autoApproveWithWeek, autoRejectIrrelevant, filterWithLLM } from './lib/filter.js';
 import { reclassifyVideos } from './lib/classify.js';
 
 // --- Env Loading ---
@@ -166,15 +166,22 @@ async function main() {
 				await searchTargeted(cycle, apiKey);
 			}
 
+			// Auto-reject clearly irrelevant videos
+			const rejected = autoRejectIrrelevant(cycle);
+			if (rejected > 0) {
+				console.log(`\nAuto-rejected ${rejected} irrelevant videos.`);
+			}
 			// Auto-approve videos that have a week number in the title
 			const approved = autoApproveWithWeek(cycle);
 			if (approved > 0) {
-				console.log(`\nAuto-approved ${approved} videos with week numbers in title.`);
+				console.log(`Auto-approved ${approved} videos with week numbers in title.`);
 			}
 			break;
 		}
 
 		case 'filter': {
+			const rejectedF = autoRejectIrrelevant(cycle);
+			console.log(`Auto-rejected ${rejectedF} irrelevant videos.`);
 			const approved = autoApproveWithWeek(cycle);
 			console.log(`Auto-approved ${approved} videos with week numbers in title.`);
 			await filterWithLLM(cycle);

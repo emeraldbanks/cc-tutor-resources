@@ -3,7 +3,7 @@ import { writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { getDB, getUnfilteredVideos, setRelevance, type VideoRow } from './db.js';
-import { extractWeek } from './classify.js';
+import { extractWeek, isNotRelevant } from './classify.js';
 
 interface FilterResult {
 	video_id: string;
@@ -32,6 +32,26 @@ export function autoApproveWithWeek(cycle: string): number {
 		}
 	}
 	return approved;
+}
+
+/**
+ * Auto-reject videos whose titles match clearly irrelevant patterns.
+ * Returns the count of auto-rejected videos.
+ */
+export function autoRejectIrrelevant(cycle: string): number {
+	const db = getDB();
+	const videos = db
+		.prepare("SELECT video_id, title FROM videos WHERE cycle = ? AND relevant IS NULL")
+		.all(cycle) as { video_id: string; title: string }[];
+
+	let rejected = 0;
+	for (const v of videos) {
+		if (isNotRelevant(v.title)) {
+			setRelevance(v.video_id, false);
+			rejected++;
+		}
+	}
+	return rejected;
 }
 
 /**

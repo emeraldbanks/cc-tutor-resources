@@ -1,5 +1,5 @@
 import { upsertChannel, getCachedChannelId, upsertVideo, getVideoCount } from './db.js';
-import { classifySubject, extractWeek, extractCycle, decodeHTMLEntities } from './classify.js';
+import { classifySubject, extractWeeks, extractCycle, decodeHTMLEntities, isNotRelevant } from './classify.js';
 
 // --- Types ---
 
@@ -117,19 +117,34 @@ export async function searchTargeted(cycle: string, apiKey: string): Promise<num
 
 			for (const item of result.items) {
 				const title = decodeHTMLEntities(item.snippet.title);
-				const week = extractWeek(title);
+				const weeks = extractWeeks(title);
 				const videoCycle = extractCycle(title) ?? cycle;
 				const subject = classifySubject(title);
+				const subjectVal = subject !== 'Unknown' ? subject : null;
 
-				upsertVideo({
-					videoId: item.id.videoId,
-					title,
-					channelId: item.snippet.channelId,
-					youtubeUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-					cycle: videoCycle,
-					week,
-					subject: subject !== 'Unknown' ? subject : null,
-				});
+				if (weeks.length === 0) {
+					upsertVideo({
+						videoId: item.id.videoId,
+						title,
+						channelId: item.snippet.channelId,
+						youtubeUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+						cycle: videoCycle,
+						week: null,
+						subject: subjectVal,
+					});
+				} else {
+					for (const week of weeks) {
+						upsertVideo({
+							videoId: item.id.videoId,
+							title,
+							channelId: item.snippet.channelId,
+							youtubeUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+							cycle: videoCycle,
+							week,
+							subject: subjectVal,
+						});
+					}
+				}
 
 				// Also ensure channel record exists (for non-target channels that appear)
 				if (item.snippet.channelId !== channelId) {
@@ -171,28 +186,45 @@ export async function searchBroad(cycle: string, week: string, apiKey: string): 
 
 	for (const item of result.items) {
 		const title = decodeHTMLEntities(item.snippet.title);
-		const extractedWeek = extractWeek(title);
-
-		// Filter: only keep if title mentions the correct week
-		if (extractedWeek && parseInt(extractedWeek, 10) !== weekNum) continue;
+		const extractedWeeks = extractWeeks(title);
 
 		// Use the cycle from the title if present; skip videos for a different cycle
 		const videoCycle = extractCycle(title) ?? cycle;
 		if (videoCycle !== cycle) continue;
 
+		const subject = classifySubject(title);
+		const subjectVal = subject !== 'Unknown' ? subject : null;
+
 		upsertChannel(item.snippet.channelId, '', item.snippet.channelTitle, false);
 
-		upsertVideo({
-			videoId: item.id.videoId,
-			title,
-			channelId: item.snippet.channelId,
-			youtubeUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-			cycle: videoCycle,
-			week: extractedWeek ?? week,
-			subject: classifySubject(title) !== 'Unknown' ? classifySubject(title) : null,
-		});
+		if (extractedWeeks.length === 0) {
+			upsertVideo({
+				videoId: item.id.videoId,
+				title,
+				channelId: item.snippet.channelId,
+				youtubeUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+				cycle: videoCycle,
+				week,
+				subject: subjectVal,
+			});
+			stored++;
+		} else {
+			// Filter: only keep if at least one extracted week matches the search week
+			if (!extractedWeeks.some((w) => parseInt(w, 10) === weekNum)) continue;
 
-		stored++;
+			for (const w of extractedWeeks) {
+				upsertVideo({
+					videoId: item.id.videoId,
+					title,
+					channelId: item.snippet.channelId,
+					youtubeUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+					cycle: videoCycle,
+					week: w,
+					subject: subjectVal,
+				});
+			}
+			stored++;
+		}
 	}
 
 	console.log(`  Stored ${stored} videos (filtered from ${result.items.length} results)`);

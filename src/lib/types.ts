@@ -17,6 +17,7 @@ export const SUBJECTS = [
 	'English',
 	'Timeline',
 	'Fine Arts',
+	'General',
 	'Review'
 ] as const;
 

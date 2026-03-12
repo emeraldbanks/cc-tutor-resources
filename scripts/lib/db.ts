@@ -26,30 +26,25 @@ function migrate(db: Database.Database): void {
 		);
 
 		CREATE TABLE IF NOT EXISTS videos (
-			video_id TEXT PRIMARY KEY,
+			video_id TEXT NOT NULL,
 			title TEXT NOT NULL,
 			channel_id TEXT NOT NULL,
 			youtube_url TEXT NOT NULL,
 			cycle TEXT,
-			week TEXT,
+			week TEXT NOT NULL DEFAULT '',
 			subject TEXT,
-			relevant INTEGER,            -- NULL=unchecked, 1=relevant, 0=not relevant
+			relevant INTEGER,
 			transcript TEXT,
 			transcript_fetched INTEGER NOT NULL DEFAULT 0,
 			exported INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			PRIMARY KEY (video_id, week),
 			FOREIGN KEY (channel_id) REFERENCES channels(channel_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_videos_cycle_week ON videos(cycle, week);
 		CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel_id);
 	`);
-
-	// Add relevant column if missing (migration for existing DBs)
-	const cols = db.prepare("PRAGMA table_info(videos)").all() as { name: string }[];
-	if (!cols.some((c) => c.name === 'relevant')) {
-		db.exec('ALTER TABLE videos ADD COLUMN relevant INTEGER');
-	}
 }
 
 // --- Channel helpers ---
@@ -108,12 +103,11 @@ export function upsertVideo(v: {
 	db.prepare(`
 		INSERT INTO videos (video_id, title, channel_id, youtube_url, cycle, week, subject)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(video_id) DO UPDATE SET
+		ON CONFLICT(video_id, week) DO UPDATE SET
 			title = excluded.title,
 			cycle = COALESCE(excluded.cycle, videos.cycle),
-			week = COALESCE(excluded.week, videos.week),
 			subject = COALESCE(excluded.subject, videos.subject)
-	`).run(v.videoId, v.title, v.channelId, v.youtubeUrl, v.cycle, v.week, v.subject);
+	`).run(v.videoId, v.title, v.channelId, v.youtubeUrl, v.cycle, v.week ?? '', v.subject);
 }
 
 export function getVideos(opts: {
@@ -177,10 +171,9 @@ export function setRelevance(videoId: string, relevant: boolean, week?: string, 
 	if (relevant && (week || subject)) {
 		db.prepare(`
 			UPDATE videos SET relevant = 1,
-				week = COALESCE(?, videos.week),
 				subject = COALESCE(?, videos.subject)
 			WHERE video_id = ?
-		`).run(week ?? null, subject ?? null, videoId);
+		`).run(subject ?? null, videoId);
 	} else {
 		db.prepare('UPDATE videos SET relevant = ? WHERE video_id = ?').run(relevant ? 1 : 0, videoId);
 	}
