@@ -19,6 +19,27 @@ interface YouTubeSearchResponse {
 	error?: { message: string };
 }
 
+interface YouTubePlaylistItem {
+	snippet: {
+		title: string;
+		resourceId: { videoId: string };
+		videoOwnerChannelId: string;
+		videoOwnerChannelTitle: string;
+	};
+}
+
+interface YouTubePlaylistsResponse {
+	items?: { id: string; snippet: { title: string } }[];
+	nextPageToken?: string;
+	error?: { message: string };
+}
+
+interface YouTubePlaylistItemsResponse {
+	items?: YouTubePlaylistItem[];
+	nextPageToken?: string;
+	error?: { message: string };
+}
+
 // --- Config ---
 
 export const TARGET_CHANNELS: Record<string, string> = {
@@ -27,6 +48,7 @@ export const TARGET_CHANNELS: Record<string, string> = {
 	'Home Video Variety Show': '@HomeVideoVarietyShow',
 	'Postmodern Mom': '@PostmodernMom',
 	'Devoted to Littles': '@Devotedtolittles',
+    'Driven By Grace': '@driven-by-grace',
 };
 
 // --- YouTube API ---
@@ -274,4 +296,144 @@ export async function fetchDescriptions(cycle: string, apiKey: string): Promise<
 
 	console.log(`Updated ${updated} descriptions.`);
 	return updated;
+}
+
+// --- Fetch all videos from channel playlists ---
+
+export async function fetchPlaylists(cycle: string, apiKey: string, channelFilter?: string): Promise<number> {
+	const channels: [string, string][] = channelFilter
+		? Object.entries(TARGET_CHANNELS).filter(([, handle]) => handle === channelFilter)
+		: Object.entries(TARGET_CHANNELS);
+
+	if (channels.length === 0 && channelFilter) {
+		// channelFilter might be a handle not in TARGET_CHANNELS — use it directly
+		channels.push([channelFilter, channelFilter]);
+	}
+
+	let totalNew = 0;
+
+	console.log(`\nPlaylist ingest for Cycle ${cycle}\n`);
+
+	for (const [name, handle] of channels) {
+		process.stdout.write(`  ${name}... `);
+
+		const channelId = await resolveChannelId(handle, name, apiKey, handle in Object.values(TARGET_CHANNELS));
+		if (!channelId) {
+			console.log('(channel not found)');
+			continue;
+		}
+
+		// Fetch all playlists for this channel
+		let playlistPageToken: string | undefined;
+		let playlists: { id: string; title: string }[] = [];
+
+		do {
+			const params = new URLSearchParams({
+				part: 'snippet',
+				channelId,
+				maxResults: '50',
+				key: apiKey,
+			});
+			if (playlistPageToken) params.set('pageToken', playlistPageToken);
+
+			const resp = await fetch(`https://www.googleapis.com/youtube/v3/playlists?${params}`);
+			const data: YouTubePlaylistsResponse = await resp.json();
+
+			if (data.error) {
+				console.error(`YouTube API error: ${data.error.message}`);
+				break;
+			}
+
+			for (const item of data.items ?? []) {
+				playlists.push({ id: item.id, title: item.snippet.title });
+			}
+
+			playlistPageToken = data.nextPageToken;
+			if (playlistPageToken) await sleep(200);
+		} while (playlistPageToken);
+
+		console.log(`${playlists.length} playlists found`);
+
+		let channelNew = 0;
+
+		for (const playlist of playlists) {
+			process.stdout.write(`    "${playlist.title}"... `);
+			let itemPageToken: string | undefined;
+			let playlistVideos = 0;
+
+			do {
+				const params = new URLSearchParams({
+					part: 'snippet',
+					playlistId: playlist.id,
+					maxResults: '50',
+					key: apiKey,
+				});
+				if (itemPageToken) params.set('pageToken', itemPageToken);
+
+				const resp = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?${params}`);
+				const data: YouTubePlaylistItemsResponse = await resp.json();
+
+				if (data.error) {
+					console.error(`API error: ${data.error.message}`);
+					break;
+				}
+
+				for (const item of data.items ?? []) {
+					const title = decodeHTMLEntities(item.snippet.title);
+					const videoId = item.snippet.resourceId.videoId;
+					const ownerChannelId = item.snippet.videoOwnerChannelId;
+					const ownerChannelTitle = item.snippet.videoOwnerChannelTitle ?? name;
+
+					// Skip deleted/private videos with no channel info
+					if (!ownerChannelId || !videoId) continue;
+
+					const weeks = extractWeeks(title);
+					const videoCycle = extractCycle(title) ?? cycle;
+					const subject = classifySubject(title);
+					const subjectVal = subject !== 'Unknown' ? subject : null;
+
+					upsertChannel(ownerChannelId, '', ownerChannelTitle, ownerChannelId === channelId);
+
+					if (weeks.length === 0) {
+						upsertVideo({
+							videoId,
+							title,
+							channelId: ownerChannelId,
+							youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+							cycle: videoCycle,
+							week: null,
+							subject: subjectVal,
+						});
+					} else {
+						for (const week of weeks) {
+							upsertVideo({
+								videoId,
+								title,
+								channelId: ownerChannelId,
+								youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+								cycle: videoCycle,
+								week,
+								subject: subjectVal,
+							});
+						}
+					}
+
+					playlistVideos++;
+				}
+
+				itemPageToken = data.nextPageToken;
+				if (itemPageToken) await sleep(200);
+			} while (itemPageToken);
+
+			console.log(`${playlistVideos} videos`);
+			channelNew += playlistVideos;
+		}
+
+		totalNew += channelNew;
+		console.log(`  ${name} total: ${channelNew} videos\n`);
+		await sleep(200);
+	}
+
+	console.log(`\nTotal: ${totalNew} videos stored from playlists`);
+	return totalNew;
 }
