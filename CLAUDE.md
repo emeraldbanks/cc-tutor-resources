@@ -21,7 +21,7 @@
 ## Collect Pipeline (`scripts/collect.ts`)
 CLI tool for sourcing and managing YouTube video resources. Run via `npm run collect -- <command> [options]`.
 
-**Commands:** search, descriptions, filter, reclassify, transcripts, export, push, pull, list
+**Commands:** search, playlist, descriptions, filter, reclassify, transcripts, export, push, pull, list
 
 **Modules** (`scripts/lib/`):
 - `db.ts` — SQLite database for storing video metadata
