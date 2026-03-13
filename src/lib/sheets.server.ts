@@ -4,42 +4,17 @@ import type { Resource } from './types';
 export { type Resource } from './types';
 export { SUBJECTS, type Subject } from './types';
 
-function parseCSV(csv: string): Resource[] {
-	const lines = csv.trim().split('\n');
-	if (lines.length < 2) return [];
-
-	const headers = parseCsvLine(lines[0]).map((h) => h.trim().toLowerCase());
-
-	return lines
-		.slice(1)
-		.map((line) => {
-			const values = parseCsvLine(line);
-			const row: Record<string, string> = {};
-			headers.forEach((h, i) => {
-				row[h] = (values[i] ?? '').trim();
-			});
-			return {
-				cycle: row['cycle'] ?? '',
-				week: row['week'] ?? '',
-				subject: row['subject'] ?? '',
-				youtube_url: row['youtube_url'] ?? '',
-				title: row['title'] ?? '',
-				notes: row['notes'] ?? ''
-			};
-		})
-		.filter((r) => r.cycle && r.week && r.subject);
-}
-
-function parseCsvLine(line: string): string[] {
-	const result: string[] = [];
+function parseCsvRecords(csv: string): string[][] {
+	const records: string[][] = [];
 	let current = '';
 	let inQuotes = false;
+	const fields: string[] = [];
 
-	for (let i = 0; i < line.length; i++) {
-		const char = line[i];
+	for (let i = 0; i < csv.length; i++) {
+		const char = csv[i];
 		if (inQuotes) {
 			if (char === '"') {
-				if (i + 1 < line.length && line[i + 1] === '"') {
+				if (i + 1 < csv.length && csv[i + 1] === '"') {
 					current += '"';
 					i++;
 				} else {
@@ -52,15 +27,50 @@ function parseCsvLine(line: string): string[] {
 			if (char === '"') {
 				inQuotes = true;
 			} else if (char === ',') {
-				result.push(current);
+				fields.push(current);
 				current = '';
+			} else if (char === '\n' || (char === '\r' && csv[i + 1] === '\n')) {
+				fields.push(current);
+				current = '';
+				records.push([...fields]);
+				fields.length = 0;
+				if (char === '\r') i++;
 			} else {
 				current += char;
 			}
 		}
 	}
-	result.push(current);
-	return result;
+	if (current || fields.length > 0) {
+		fields.push(current);
+		records.push(fields);
+	}
+	return records;
+}
+
+function parseCSV(csv: string): Resource[] {
+	const records = parseCsvRecords(csv.trim());
+	if (records.length < 2) return [];
+
+	const headers = records[0].map((h) => h.trim().toLowerCase());
+
+	return records
+		.slice(1)
+		.map((values) => {
+			const row: Record<string, string> = {};
+			headers.forEach((h, i) => {
+				row[h] = (values[i] ?? '').trim();
+			});
+			return {
+				cycle: row['cycle'] ?? '',
+				week: row['week'] ?? '',
+				subject: row['subject'] ?? '',
+				youtube_url: row['youtube_url'] ?? '',
+				title: row['title'] ?? '',
+				notes: row['notes'] ?? '',
+				description: row['description'] ?? ''
+			};
+		})
+		.filter((r) => r.cycle && r.week && r.subject);
 }
 
 export async function fetchResources(): Promise<Resource[]> {

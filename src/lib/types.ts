@@ -5,6 +5,7 @@ export interface Resource {
 	youtube_url: string;
 	title: string;
 	notes: string;
+	description: string;
 }
 
 export const SUBJECTS = [

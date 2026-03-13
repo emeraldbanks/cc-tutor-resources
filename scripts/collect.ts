@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { getDB, getVideos } from './lib/db.js';
-import { searchTargeted, searchBroad } from './lib/youtube.js';
+import { searchTargeted, searchBroad, fetchDescriptions } from './lib/youtube.js';
 import { fetchTranscripts } from './lib/transcripts.js';
 import { exportCSV } from './lib/export.js';
 import { autoApproveWithWeek, autoRejectIrrelevant, filterWithLLM } from './lib/filter.js';
@@ -38,6 +38,7 @@ Usage: npm run collect -- <command> [options]
 
 Commands:
   search        Search YouTube and store results in SQLite
+  descriptions  Fetch full descriptions from YouTube videos API
   filter        Auto-approve videos with week numbers, send the rest to Claude
   reclassify    Re-extract cycle/week/subject from titles for existing videos
   transcripts   Fetch transcripts for videos missing them
@@ -173,6 +174,9 @@ async function main() {
 				await searchTargeted(cycle, apiKey);
 			}
 
+			// Fetch full descriptions
+			await fetchDescriptions(cycle, apiKey);
+
 			// Auto-reject clearly irrelevant videos
 			const rejected = autoRejectIrrelevant(cycle);
 			if (rejected > 0) {
@@ -183,6 +187,16 @@ async function main() {
 			if (approved > 0) {
 				console.log(`Auto-approved ${approved} videos with week numbers in title.`);
 			}
+			break;
+		}
+
+		case 'descriptions': {
+			const apiKey = env['YOUTUBE_API_KEY'];
+			if (!apiKey) {
+				console.error('Error: YOUTUBE_API_KEY not set in .env');
+				process.exit(1);
+			}
+			await fetchDescriptions(cycle, apiKey);
 			break;
 		}
 

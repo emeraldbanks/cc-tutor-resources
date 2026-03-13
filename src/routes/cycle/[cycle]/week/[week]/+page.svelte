@@ -5,6 +5,24 @@
 	import WeekNav from '$lib/components/WeekNav.svelte';
 
 	let { data } = $props();
+
+	function splitWithLinks(text: string): { type: 'text' | 'link'; text: string }[] {
+		const urlRegex = /(https?:\/\/[^\s]+)/g;
+		const parts: { type: 'text' | 'link'; text: string }[] = [];
+		let lastIndex = 0;
+		let match: RegExpExecArray | null;
+		while ((match = urlRegex.exec(text)) !== null) {
+			if (match.index > lastIndex) {
+				parts.push({ type: 'text', text: text.slice(lastIndex, match.index) });
+			}
+			parts.push({ type: 'link', text: match[1] });
+			lastIndex = match.index + match[0].length;
+		}
+		if (lastIndex < text.length) {
+			parts.push({ type: 'text', text: text.slice(lastIndex) });
+		}
+		return parts;
+	}
 </script>
 
 <svelte:head>
@@ -43,6 +61,24 @@
 						{resource.title}
 					</h3>
 					<VideoEmbed url={resource.youtube_url} title={resource.title} />
+					{#if resource.description}
+						{@const lines = resource.description.split('\n').filter((l: string) => /https?:\/\//.test(l))}
+						{#if lines.length > 0}
+							<div class="mt-4 space-y-1 text-sm text-warm-700">
+								{#each lines as line}
+									<p>
+										{#each splitWithLinks(line) as segment}
+											{#if segment.type === 'link'}
+												<a href={segment.text} target="_blank" rel="noopener noreferrer" class="text-terracotta-600 underline hover:text-terracotta-800 break-all">{segment.text}</a>
+											{:else}
+												{segment.text}
+											{/if}
+										{/each}
+									</p>
+								{/each}
+							</div>
+						{/if}
+					{/if}
 					{#if resource.notes}
 						<p class="mt-4 text-warm-700">{resource.notes}</p>
 					{/if}

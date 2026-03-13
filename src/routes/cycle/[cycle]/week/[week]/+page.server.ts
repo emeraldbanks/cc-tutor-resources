@@ -27,7 +27,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		resources: activeResources.map((r) => ({
 			title: r.title,
 			youtube_url: r.youtube_url,
-			notes: r.notes
+			notes: r.notes,
+			description: r.description
 		})),
 		totalWeeks: 24
 	};
