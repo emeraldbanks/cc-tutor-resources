@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { getDB, getVideos } from './lib/db.js';
-import { searchTargeted, searchBroad, fetchDescriptions } from './lib/youtube.js';
+import { searchTargeted, searchBroad, fetchDescriptions, fetchPlaylists } from './lib/youtube.js';
 import { fetchTranscripts } from './lib/transcripts.js';
 import { exportCSV } from './lib/export.js';
 import { autoApproveWithWeek, autoRejectIrrelevant, filterWithLLM } from './lib/filter.js';
@@ -38,6 +38,7 @@ Usage: npm run collect -- <command> [options]
 
 Commands:
   search        Search YouTube and store results in SQLite
+  playlist      Ingest all videos from channel playlists (low quota cost)
   descriptions  Fetch full descriptions from YouTube videos API
   filter        Auto-approve videos with week numbers, send the rest to Claude
   reclassify    Re-extract cycle/week/subject from titles for existing videos
@@ -52,6 +53,7 @@ Options:
   --week <N>    Week number (optional for some commands)
   --subject <S> Filter by subject (for list)
   --broad       Use broad global search instead of targeted channel search
+  --channel <@> Channel handle for playlist command (e.g. @driven-by-grace)
 
 Examples:
   npm run collect -- search --cycle 2
@@ -74,6 +76,7 @@ interface CLIArgs {
 	week?: string;
 	subject?: string;
 	broad: boolean;
+	channel?: string;
 }
 
 function parseArgs(): CLIArgs {
@@ -83,21 +86,23 @@ function parseArgs(): CLIArgs {
 	let week: string | undefined;
 	let subject: string | undefined;
 	let broad = false;
+	let channel: string | undefined;
 
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === '--cycle' && args[i + 1]) cycle = args[++i];
 		else if (args[i] === '--week' && args[i + 1]) week = args[++i];
 		else if (args[i] === '--subject' && args[i + 1]) subject = args[++i];
+		else if (args[i] === '--channel' && args[i + 1]) channel = args[++i];
 		else if (args[i] === '--broad') broad = true;
 		else if (!args[i].startsWith('-') && !command) command = args[i];
 	}
 
-	if (!command || (!cycle && command !== 'pull')) {
+	if (!command || (!cycle && command !== 'pull' && command !== 'push')) {
 		printUsage();
 		process.exit(1);
 	}
 
-	return { command, cycle, week, subject, broad };
+	return { command, cycle, week, subject, broad, channel };
 }
 
 // --- List command ---
@@ -150,7 +155,7 @@ function listVideos(cycle: string, week?: string, subject?: string): void {
 // --- Main ---
 
 async function main() {
-	const { command, cycle, week, subject, broad } = parseArgs();
+	const { command, cycle, week, subject, broad, channel } = parseArgs();
 	const env = loadEnv();
 
 	// Initialize DB on any command
@@ -186,6 +191,31 @@ async function main() {
 			const approved = autoApproveWithWeek(cycle);
 			if (approved > 0) {
 				console.log(`Auto-approved ${approved} videos with week numbers in title.`);
+			}
+			break;
+		}
+
+		case 'playlist': {
+			const apiKey = env['YOUTUBE_API_KEY'];
+			if (!apiKey) {
+				console.error('Error: YOUTUBE_API_KEY not set in .env');
+				process.exit(1);
+			}
+
+			await fetchPlaylists(cycle, apiKey, channel);
+
+			// Fetch full descriptions
+			await fetchDescriptions(cycle, apiKey);
+
+			// Auto-reject clearly irrelevant videos
+			const rejectedP = autoRejectIrrelevant(cycle);
+			if (rejectedP > 0) {
+				console.log(`\nAuto-rejected ${rejectedP} irrelevant videos.`);
+			}
+			// Auto-approve videos that have a week number in the title
+			const approvedP = autoApproveWithWeek(cycle);
+			if (approvedP > 0) {
+				console.log(`Auto-approved ${approvedP} videos with week numbers in title.`);
 			}
 			break;
 		}
