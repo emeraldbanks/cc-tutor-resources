@@ -34,6 +34,7 @@ function migrate(db: Database.Database): void {
 			week TEXT NOT NULL DEFAULT '',
 			subject TEXT,
 			relevant INTEGER,
+			description TEXT,
 			transcript TEXT,
 			transcript_fetched INTEGER NOT NULL DEFAULT 0,
 			exported INTEGER NOT NULL DEFAULT 0,
@@ -45,6 +46,12 @@ function migrate(db: Database.Database): void {
 		CREATE INDEX IF NOT EXISTS idx_videos_cycle_week ON videos(cycle, week);
 		CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel_id);
 	`);
+
+	// Migration: add description column to existing databases
+	const cols = db.prepare("PRAGMA table_info(videos)").all() as { name: string }[];
+	if (!cols.some((c) => c.name === 'description')) {
+		db.exec("ALTER TABLE videos ADD COLUMN description TEXT");
+	}
 }
 
 // --- Channel helpers ---
@@ -80,6 +87,7 @@ export interface VideoRow {
 	week: string | null;
 	subject: string | null;
 	relevant: number | null;
+	description: string | null;
 	transcript: string | null;
 	transcript_fetched: number;
 	exported: number;
@@ -98,16 +106,18 @@ export function upsertVideo(v: {
 	cycle: string | null;
 	week: string | null;
 	subject: string | null;
+	description?: string | null;
 }): void {
 	const db = getDB();
 	db.prepare(`
-		INSERT INTO videos (video_id, title, channel_id, youtube_url, cycle, week, subject)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO videos (video_id, title, channel_id, youtube_url, cycle, week, subject, description)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(video_id, week) DO UPDATE SET
 			title = excluded.title,
 			cycle = COALESCE(excluded.cycle, videos.cycle),
-			subject = COALESCE(excluded.subject, videos.subject)
-	`).run(v.videoId, v.title, v.channelId, v.youtubeUrl, v.cycle, v.week ?? '', v.subject);
+			subject = COALESCE(excluded.subject, videos.subject),
+			description = COALESCE(excluded.description, videos.description)
+	`).run(v.videoId, v.title, v.channelId, v.youtubeUrl, v.cycle, v.week ?? '', v.subject, v.description ?? null);
 }
 
 export function getVideos(opts: {
@@ -194,6 +204,19 @@ export function markExported(videoIds: string[]): void {
 		for (const id of videoIds) stmt.run(id);
 	});
 	tx();
+}
+
+export function updateDescription(videoId: string, description: string): void {
+	const db = getDB();
+	db.prepare('UPDATE videos SET description = ? WHERE video_id = ?').run(description, videoId);
+}
+
+export function getVideoIdsMissingDescriptions(cycle: string): string[] {
+	const db = getDB();
+	const rows = db
+		.prepare("SELECT DISTINCT video_id FROM videos WHERE cycle = ? AND (description IS NULL OR description LIKE '%...')")
+		.all(cycle) as { video_id: string }[];
+	return rows.map((r) => r.video_id);
 }
 
 export function getVideoCount(channelId: string, cycle: string): number {

@@ -1,4 +1,4 @@
-import { upsertChannel, getCachedChannelId, upsertVideo, getVideoCount } from './db.js';
+import { upsertChannel, getCachedChannelId, upsertVideo, getVideoCount, updateDescription, getVideoIdsMissingDescriptions } from './db.js';
 import { classifySubject, extractWeeks, extractCycle, decodeHTMLEntities, isNotRelevant } from './classify.js';
 
 // --- Types ---
@@ -7,6 +7,7 @@ interface YouTubeSearchItem {
 	id: { videoId: string };
 	snippet: {
 		title: string;
+		description?: string;
 		channelTitle: string;
 		channelId: string;
 	};
@@ -229,4 +230,48 @@ export async function searchBroad(cycle: string, week: string, apiKey: string): 
 
 	console.log(`  Stored ${stored} videos (filtered from ${result.items.length} results)`);
 	return stored;
+}
+
+// --- Fetch full descriptions via videos.list API ---
+
+export async function fetchDescriptions(cycle: string, apiKey: string): Promise<number> {
+	const videoIds = getVideoIdsMissingDescriptions(cycle);
+	if (videoIds.length === 0) {
+		console.log('\nAll videos already have full descriptions.');
+		return 0;
+	}
+
+	console.log(`\nFetching full descriptions for ${videoIds.length} videos...`);
+	let updated = 0;
+
+	for (let i = 0; i < videoIds.length; i += 50) {
+		const batch = videoIds.slice(i, i + 50);
+		const params = new URLSearchParams({
+			part: 'snippet',
+			id: batch.join(','),
+			key: apiKey,
+		});
+
+		const resp = await fetch(`https://www.googleapis.com/youtube/v3/videos?${params}`);
+		const data = await resp.json();
+
+		if (data.error) {
+			console.error(`YouTube API error: ${data.error.message}`);
+			break;
+		}
+
+		for (const item of data.items ?? []) {
+			const description: string = item.snippet?.description ?? '';
+			if (description) {
+				updateDescription(item.id, description);
+				updated++;
+			}
+		}
+
+		process.stdout.write(`  ${Math.min(i + 50, videoIds.length)}/${videoIds.length}\n`);
+		if (i + 50 < videoIds.length) await sleep(200);
+	}
+
+	console.log(`Updated ${updated} descriptions.`);
+	return updated;
 }

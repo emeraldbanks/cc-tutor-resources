@@ -21,8 +21,8 @@ export function exportCSV(cycle: string, week?: string): void {
 
 	const baseName = week ? `cycle${cycle}-week${week}` : `cycle${cycle}`;
 
-	// CSV matching sheet format: cycle,week,subject,youtube_url,title,notes
-	const csvRows = ['cycle,week,subject,youtube_url,title,notes'];
+	// CSV matching sheet format: cycle,week,subject,youtube_url,title,notes,description
+	const csvRows = ['cycle,week,subject,youtube_url,title,notes,description'];
 	for (const v of videos) {
 		csvRows.push(
 			[
@@ -32,6 +32,7 @@ export function exportCSV(cycle: string, week?: string): void {
 				escapeCSV(v.youtube_url),
 				escapeCSV(v.title),
 				escapeCSV(v.channel_name ?? ''),
+				escapeCSV(v.description ?? ''),
 			].join(',')
 		);
 	}
@@ -47,6 +48,7 @@ export function exportCSV(cycle: string, week?: string): void {
 		subject: v.subject,
 		youtube_url: v.youtube_url,
 		title: v.title,
+		description: v.description ?? null,
 		channelTitle: v.channel_name,
 		transcript: v.transcript ?? null,
 	}));

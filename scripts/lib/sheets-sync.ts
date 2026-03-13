@@ -67,7 +67,7 @@ export async function pushToSheet(cycle: string, week?: string): Promise<void> {
 
 	const sheets = await getSheetsClient();
 
-	const header = ['cycle', 'week', 'subject', 'youtube_url', 'title', 'notes'];
+	const header = ['cycle', 'week', 'subject', 'youtube_url', 'title', 'notes', 'description'];
 	const rows = videos.map((v) => [
 		v.cycle ?? '',
 		v.week ?? '',
@@ -75,6 +75,7 @@ export async function pushToSheet(cycle: string, week?: string): Promise<void> {
 		v.youtube_url,
 		v.title,
 		v.channel_name ?? '',
+		v.description ?? '',
 	]);
 
 	// Clear and write
@@ -142,6 +143,7 @@ export async function pullFromSheet(cycle?: string): Promise<void> {
 			cycle: row['cycle'],
 			week: row['week'],
 			subject: row['subject'],
+			description: row['description'] || null,
 		});
 		count++;
 	}
